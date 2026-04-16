@@ -1,0 +1,49 @@
+name: Terraform Apply
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy-production:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@ec61189d14ec14c8efccab744f656cffd0e33f37 # v6.1.0
+        with:
+          role-to-assume: "arn:aws:iam::127348474572:role/tailscale-connector-deploy"
+          aws-region: "eu-west-1"
+
+      - name: Configure git for private modules
+        run: git config --global url."https://x-access-token:${{ secrets.GH_MODULE_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Read Terraform version
+        id: tf-version
+        run: echo "version=$(cat .terraform-version)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@5e8dbf3c6d9deaf4193ca7a8fb23f2ac83bb6c85 # v4.0.0
+        with:
+          terraform_version: ${{ steps.tf-version.outputs.version }}
+
+      - name: Terraform Init
+        run: terraform init -backend-config=envs/production/backend.hcl
+        working-directory: terraform
+
+      - name: Terraform Apply
+        run: |
+          terraform apply -auto-approve -no-color \
+            -var-file=envs/production/terraform.tfvars \
+            -var="tailscale_auth_key=${{ secrets.TAILSCALE_AUTH_KEY }}"
+        working-directory: terraform

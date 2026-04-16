@@ -1,0 +1,90 @@
+name: Terraform Plan
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@ec61189d14ec14c8efccab744f656cffd0e33f37 # v6.1.0
+        with:
+          role-to-assume: "arn:aws:iam::127348474572:role/tailscale-connector-deploy"
+          aws-region: "eu-west-1"
+
+      - name: Terraform Plan
+        uses: dflook/terraform-plan@7878bff63e2099cdc9be9a6f33cbbbf687f8f0fe # v2.2.3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TERRAFORM_PRE_RUN: |
+            git config --global url."https://x-access-token:${{ secrets.GH_MODULE_TOKEN }}@github.com/".insteadOf "https://github.com/"
+        with:
+          path: terraform
+          backend_config_file: terraform/envs/production/backend.hcl
+          var_file: |
+            terraform/envs/production/terraform.tfvars
+          variables: |
+            tailscale_auth_key = "${{ secrets.TAILSCALE_AUTH_KEY }}"
+
+  infracost:
+    name: Infracost
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Setup Infracost
+        uses: infracost/actions/setup@d51fc54d23c9ad90f984b884257bd96dc2625067 # v4.1.0
+        with:
+          api-key: ${{ secrets.INFRACOST_API_KEY }}
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+
+      - name: Configure git for private modules
+        run: git config --global url."https://x-access-token:${{ secrets.GH_MODULE_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Generate Infracost baseline
+        run: |
+          infracost breakdown \
+            --path=terraform \
+            --terraform-var-file=envs/production/terraform.tfvars \
+            --format=json \
+            --out-file=/tmp/infracost-base.json
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Configure git for private modules
+        run: git config --global url."https://x-access-token:${{ secrets.GH_MODULE_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Generate Infracost diff
+        run: |
+          infracost diff \
+            --path=terraform \
+            --terraform-var-file=envs/production/terraform.tfvars \
+            --compare-to=/tmp/infracost-base.json \
+            --format=json \
+            --out-file=/tmp/infracost.json
+
+      - name: Post Infracost comment
+        run: |
+          infracost comment github \
+            --path=/tmp/infracost.json \
+            --repo=$GITHUB_REPOSITORY \
+            --pull-request=${{ github.event.pull_request.number }} \
+            --github-token=${{ secrets.GITHUB_TOKEN }} \
+            --behavior=update
