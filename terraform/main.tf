@@ -21,7 +21,7 @@ resource "aws_ssm_parameter" "tailscale_auth_key" {
 }
 
 module "connector" {
-  source = "git::https://github.com/allankp/tf-module-tailscale-app-connector.git?ref=v0.1.0"
+  source = "git::https://github.com/allankp/tf-module-tailscale-app-connector.git?ref=v0.0.1"
 
   name               = "${local.name}-${var.environment}"
   hostname           = var.hostname
