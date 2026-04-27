@@ -21,7 +21,7 @@ resource "aws_ssm_parameter" "tailscale_auth_key" {
 }
 
 module "connector" {
-  source = "git::https://github.com/allankp/tf-module-tailscale-subnet-router.git?ref=v0.0.2"
+  source = "git::https://github.com/allankp/tf-module-tailscale-subnet-router.git?ref=v0.0.3"
 
   name              = "${local.name}-${var.environment}"
   vpc_id            = data.terraform_remote_state.platform.outputs.vpc_id
