@@ -3,7 +3,7 @@ locals {
 }
 
 module "tags" {
-  source = "git::https://github.com/allankp/tf-module-tags.git?ref=v0.0.1"
+  source = "git::https://github.com/allankp/tf-module-tags.git?ref=v0.0.2"
 
   repo        = "tailscale-connector"
   environment = var.environment
